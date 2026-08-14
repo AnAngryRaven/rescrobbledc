@@ -95,9 +95,12 @@ pub fn filter_metadata(config: &Config, track: Track, metadata: &Metadata) -> Re
 
     let mut output = output.split('\n');
     match (output.next(), output.next(), output.next()) {
-        (Some(artist), Some(title), album) => {
-            Ok(FilterResult::Filtered(Track::new(artist, title, album)))
-        }
+        (Some(artist), Some(title), album) => Ok(FilterResult::Filtered(Track::new(
+            artist,
+            title,
+            album,
+            track.length(),
+        ))),
         _ => Ok(FilterResult::Ignored),
     }
 }
@@ -137,14 +140,15 @@ echo \"Album=$album\"
         assert_eq!(
             filter_metadata(
                 &config,
-                Track::new("lorem", "ipsum", Some("dolor")),
+                Track::new("lorem", "ipsum", Some("dolor"), None),
                 &Metadata::new("track_id"),
             )
             .unwrap(),
             FilterResult::Filtered(Track::new(
                 "Artist=lorem",
                 "Title=ipsum",
-                Some("Album=dolor")
+                Some("Album=dolor"),
+                None
             ))
         );
 
@@ -162,7 +166,7 @@ true
         assert_eq!(
             filter_metadata(
                 &config,
-                Track::new("lorem", "ipsum", Some("dolor")),
+                Track::new("lorem", "ipsum", Some("dolor"), None),
                 &Metadata::new("track_id"),
             )
             .unwrap(),
@@ -176,11 +180,11 @@ true
         assert_eq!(
             filter_metadata(
                 &config,
-                Track::new("lorem", "ipsum", Some("dolor")),
+                Track::new("lorem", "ipsum", Some("dolor"), None),
                 &Metadata::new("track_id"),
             )
             .unwrap(),
-            FilterResult::NotFiltered(Track::new("lorem", "ipsum", Some("dolor")))
+            FilterResult::NotFiltered(Track::new("lorem", "ipsum", Some("dolor"), None))
         );
 
         // Album should be optional, empty album should still result in `FilterResult::Filtered`
@@ -203,11 +207,40 @@ echo \"$album\"
         assert_eq!(
             filter_metadata(
                 &config,
-                Track::new("lorem", "ipsum", None),
+                Track::new("lorem", "ipsum", None, None),
                 &Metadata::new("track_id"),
             )
             .unwrap(),
-            FilterResult::Filtered(Track::new("lorem", "ipsum", None)),
-        )
+            FilterResult::Filtered(Track::new("lorem", "ipsum", None, None)),
+        );
+
+        // Script with a length output should have that length in the filtered track
+
+        let path_length = temp_dir.path().join("filter_length.sh");
+        const FILTER_SCRIPT_LENGTH: &str = "#!/usr/bin/env sh
+read artist
+read title
+read album
+read genre
+read length
+echo \"$artist\"
+echo \"$title\"
+echo \"$album\"
+echo \"$length\"
+";
+
+        write_test_script(&path_length, FILTER_SCRIPT_LENGTH);
+
+        config.filter_script = Some(path_length);
+
+        assert_eq!(
+            filter_metadata(
+                &config,
+                Track::new("lorem", "ipsum", Some("dolor"), Some(545000)), // NOTE: There are an additional 3 commas here, as this method is called twice, and therefore (erroneously) divides by 1000 twice during this test
+                &Metadata::new("track_id"),
+            )
+            .unwrap(),
+            FilterResult::Filtered(Track::new("lorem", "ipsum", Some("dolor"), Some(545000)))
+        );
     }
 }

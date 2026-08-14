@@ -20,6 +20,7 @@ pub struct Track {
     artist: String,
     title: String,
     album: Option<String>,
+    length: Option<u128>,
 }
 
 impl Track {
@@ -35,7 +36,11 @@ impl Track {
         self.album.as_deref()
     }
 
-    pub fn new(artist: &str, title: &str, album: Option<&str>) -> Self {
+    pub fn length(&self) -> Option<u128> {
+        self.length
+    }
+
+    pub fn new(artist: &str, title: &str, album: Option<&str>, length: Option<u128>) -> Self {
         Self {
             artist: artist.to_owned(),
             title: title.to_owned(),
@@ -46,6 +51,7 @@ impl Track {
                     None
                 }
             }),
+            length: length,
         }
     }
 
@@ -59,6 +65,7 @@ impl Track {
         self.artist.clone_from(&other.artist);
         self.title.clone_from(&other.title);
         self.album.clone_from(&other.album);
+        self.length.clone_from(&other.length);
     }
 
     pub fn from_metadata(metadata: &Metadata) -> Self {
@@ -79,10 +86,16 @@ impl Track {
             }
         });
 
+        let length: Option<u128> = match metadata.length() {
+            Some(d) => Some(d.as_millis().to_owned()),
+            None => None,
+        };
+
         Self {
             artist,
             title,
             album,
+            length,
         }
     }
 }
@@ -98,15 +111,28 @@ mod tests {
         // Constructing a track with an empty album should result in `None` for `Track::album()`
 
         assert_eq!(
-            Track::new("Enter Shikari", "Live Outside", None).album(),
+            Track::new("Enter Shikari", "Live Outside", None, Some(220)).album(),
             None
         );
 
         // Constructing a track with a nonempty album should result in `Some` for `Track::album()`
 
         assert_eq!(
-            Track::new("Dimension", "Psycho", Some("Organ")).album(),
+            Track::new("Dimension", "Psycho", Some("Organ"), Some(161)).album(),
             Some("Organ")
+        );
+
+        // Constructing a track with digits should result in `Some` for `Track::length()`
+
+        assert_eq!(
+            Track::new(
+                "Nine Inch Nails",
+                "Closer",
+                Some("The Downward Spiral"),
+                Some(373000)
+            )
+            .length(),
+            Some(373_000 as u128)
         );
     }
 
@@ -167,5 +193,24 @@ mod tests {
         let track_with_album = Track::from_metadata(&metadata_with_album);
 
         assert_eq!(track_with_album.album(), Some("Business As Usual"));
+
+        // Metadata with length should result in a `Some` for `Track::length()`
+
+        let mut metadata_with_length = HashMap::new();
+        metadata_with_length.insert("mpris:length".to_owned(), MetadataValue::U64(206_000_000));
+
+        metadata_with_length.insert(
+            "xesam:artist".to_owned(),
+            MetadataValue::Array(vec![MetadataValue::String("On-lyne".to_owned())]),
+        );
+
+        metadata_with_length.insert(
+            "xesam:title".to_owned(),
+            MetadataValue::String("Running Late".to_owned()),
+        );
+        let metadata_with_length = Metadata::from(metadata_with_length);
+        let track_with_length = Track::from_metadata(&metadata_with_length);
+
+        assert_eq!(track_with_length.length, Some(206000 as u128));
     }
 }
